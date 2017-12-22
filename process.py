@@ -37,6 +37,7 @@ def generate_data():
     args = get_args()
     process(args)
 
+
 # 生成数据后，检查数据合法性
 # answer_index 包含的片段 是否与 原文答案一致
 def check_data(data_type):
@@ -58,6 +59,7 @@ def check_data(data_type):
                     invalid_answer += 1
     print(data_type, " invalid_answer: ", invalid_answer)
 
+
 # 添加参数信息
 def get_args():
     parser = argparse.ArgumentParser()
@@ -76,11 +78,13 @@ def get_args():
     # todo: put more args here
     return parser.parse_args()
 
+
 def process(args):
     if not os.path.exists(args.target_dir):
         os.mkdir(args.target_dir)
     process_each(args, 'train', 'train')
     process_each(args, 'dev', 'dev')
+
 
 # 对当前json文件进行处理
 def process_each(args, data_type, out_name, start_ratio=0.0, stop_ratio=1.0):
@@ -98,7 +102,7 @@ def process_each(args, data_type, out_name, start_ratio=0.0, stop_ratio=1.0):
 
     start_ai = int(len(source_data['data']) * start_ratio)
     stop_ai = int(len(source_data['data']) * stop_ratio)
-    # stop_ai = 1
+    stop_ai = 1
     invalid_answer = 0  # 统计非法答案，情况包括但不局限于：答案是文中某个单词的前缀
 
     for ai, article in enumerate(tqdm(source_data['data'][start_ai:stop_ai])):
@@ -146,13 +150,17 @@ def process_each(args, data_type, out_name, start_ratio=0.0, stop_ratio=1.0):
             "question_char":questions_char, "answer_index":answer_index, "answer_text":answersss,
             "question_id":questions_id}
     print("invalid answer: ",invalid_answer)
-    # save(args, data, out_name)
+    save(args, data, out_name, 'generate')
 
-def save(args, data, data_type):
-    data_path = os.path.join(args.target_dir, "data_glove_{}d_{}.json".format(args.glove_vector_size,data_type))
-    # print(data)
+
+def save(args, data, data_type, save_type):
+    if save_type == 'generate':
+        data_path = os.path.join(args.target_dir, "data_{}.json".format(data_type))
+    elif save_type == 'encode':
+        data_path = os.path.join(args.target_dir, "data_{}d_{}.json".format(args.glove_vector_size,data_type))
     # print('data_path: ', data_path)
     json.dump(data, open(data_path, 'w'))
+
 
 # 将SQuAD中的start_answer转化为word层面
 def find_answer_index(context, context_word, answer_text, answer_start):
@@ -170,6 +178,7 @@ def find_answer_index(context, context_word, answer_text, answer_start):
     else:
         return (-1, -1)
 
+
 # input：一段英文文本
 # output: 将输入文本按照单词分割，将单词按char分割
 # word tokenize: 处理文本中的引号，部分单词特殊处理，如1-2， 1/4
@@ -177,6 +186,7 @@ def get_words_and_char(text):
     words = word_tokenize(text)
     char = [[list(char) for char in word] for word in words]
     return words, char
+
 
 # input：tokens 单词序列
 # output：特殊处理后的单词序列
@@ -192,11 +202,13 @@ def process_tokens(temp_tokens):
         tokens.extend(re.split("([{}])".format("".join(l)), token))
     return tokens
 
+
 def word_tokenize(text):
     import nltk
     tokens = [token.replace("''", '"').replace("``", '"') for token in nltk.word_tokenize(text)]
     tokens = process_tokens(tokens)
     return tokens
+
 
 def test_find_answer_index():
     context = "Super Bowl 50 was an American football game to determine the champion of the National Football League (NFL) for the 2015 season. The American Football Conference (AFC) champion Denver Broncos defeated the National Football Conference (NFC) champion Carolina Panthers 24–10 to earn their third Super Bowl title. The game was played on February 7, 2016, at Levi's Stadium in the San Francisco Bay Area at Santa Clara, California. As this was the 50th Super Bowl, the league emphasized the \"golden anniversary\" with various gold-themed initiatives, as well as temporarily suspending the tradition of naming each Super Bowl game with Roman numerals (under which the game would have been known as \"Super Bowl L\"), so that the logo could prominently feature the Arabic numerals 50."
@@ -207,11 +219,13 @@ def test_find_answer_index():
     print('s,e: ', answer_index_start, answer_index_stop)
     print('context_word: ', context_word)
 
+
 # 将passage_word, question_word 添加glove信息，word2vec
 def encode():
     args = get_args()
     encode_each(args, 'dev', 'dev')
     encode_each(args, 'train', 'train')
+
 
 def encode_each(args, data_type, out_name, start_ratio=0.0, stop_ratio=1.0):
     source_path = os.path.join(args.target_dir, "data_{}.json".format(data_type))
@@ -227,7 +241,8 @@ def encode_each(args, data_type, out_name, start_ratio=0.0, stop_ratio=1.0):
     # print(target_data)
     # with open('test.txt','w') as f:
     #     f.write(target_data)
-    save(args, target_data, data_type)
+    save(args, target_data, data_type, 'encode')
+
 
 def get_word2vec_passage(args, word2vec_dict, passage_word):
     passage_word_vec = passage_word
@@ -244,6 +259,7 @@ def get_word2vec_passage(args, word2vec_dict, passage_word):
         passage_word_vec[pi] = para_vector
     print('passage num_out_of_vocab: ', num_out_of_vocab)
     return passage_word_vec
+
 
 def get_word2vec_question(args, word2vec_dict, question_word):
     question_word_vec = question_word
@@ -263,6 +279,7 @@ def get_word2vec_question(args, word2vec_dict, question_word):
     print('question num_out_of_vocab: ', num_out_of_vocab)
     return question_word_vec
 
+
 def test_get_word2vec():
     args = get_args()
     args.glove_vector_size = 2
@@ -273,6 +290,7 @@ def test_get_word2vec():
     question_vec = get_word2vec_question(args, word2vec_dict, question_word)
     print('passage: ', passage_vec)
     print('question: ', question_vec)
+
 
 def get_word2vec_dict(args):
     glove_path = os.path.join(args.glove_dir, "glove.{}.{}d.txt".format(args.glove_corpus, args.glove_vector_size))
@@ -292,14 +310,15 @@ def get_word2vec_dict(args):
 if __name__ == "__main__":
     # test()
     generate_data()
+    encode()
 
-    if sys.argv[0] == 'squad':
-        generate_data()  # 生成passage_word, question_word, answer_index
-    elif sys.argv[0] == 'glove':
-        encode()         # 将generate_data()中的word 替换为向量表示
-    else :
-        encode()
-        test_get_word2vec()
+    # if sys.argv[0] == 'squad':
+    #     generate_data()  # 生成passage_word, question_word, answer_index
+    # elif sys.argv[0] == 'glove':
+    #     encode()         # 将generate_data()中的word 替换为向量表示
+    # else :
+    #     encode()
+        # test_get_word2vec()
 
     # check_data('train')
     # check_data('dev')

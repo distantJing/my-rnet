@@ -3,3 +3,5 @@ data_test/
 .idea/
 glove/
 test.py
+__pycache__/
+out/

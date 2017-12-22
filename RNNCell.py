@@ -16,8 +16,9 @@ class gated_attention_Wrapper(RNNCell):
         :param cell_fn:  default: tf.nn.rnn_cell.GRUCell 或者新定义的cell
         memory: 相当于 question encoding u_Q
         '''
-        super(gated_attention_Wrapper, self).__init__(_reuse=reuse)    #todo what's this mean？？？
+        super(gated_attention_Wrapper, self).__init__()    #todo what's this mean？？？
         cell = cell_fn
+        print(cell)
         self._cell = cell(num_units)     #cell为新定义的或默认的# todo
         self._num_units = num_units
         self._activation = math_ops.tanh

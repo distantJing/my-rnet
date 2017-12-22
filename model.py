@@ -26,24 +26,23 @@ class Model():
         self.lr = config.init_lr                              # learning rate
 
         # define input
-        self.batch_size = tf.placeholder('int32')
-        # passage and question words, and its sequence len
-        self.passage_words = tf.placeholder('float',[self.batch_size, self.max_passage_word, self.word_emb_size])
-        self.question_words = tf.placeholder('float', [self.batch_size, self.max_question_word, self.word_emb_size])
-        self.passage_words_len = tf.placeholder('int32', [self.batch_size])
-        self.question_words_len = tf.placeholder('int32', [self.batch_size])
+        self.batch_size = config.train_batch_size
+        # self.batch_size = tf.placeholder('int32',1)
+        # passage and question words, and its sequence len, 第一维为self.batch_size
+        self.passage_words = tf.placeholder('float',[None, self.max_passage_word, self.word_emb_size])
+        self.question_words = tf.placeholder('float', [None, self.max_question_word, self.word_emb_size])
+        self.passage_words_len = tf.placeholder('int32', [None])
+        self.question_words_len = tf.placeholder('int32', [None])
         # passage and question char, and its sequence len
-        self.passage_words_char = tf.placeholder('float', [self.batch_size, self.max_passage_word,])
-        self.question_words_char = tf.placeholder('float', [self.batch_size, self.max_question_word, ])
+        self.passage_words_char = tf.placeholder('float', [None, self.max_passage_word,])
+        self.question_words_char = tf.placeholder('float', [None, self.max_question_word, ])
         # question id and answer label
-        self.question_id = tf.placeholder(tf.string, [self.batch_size])
-        self.answer_index = tf.placeholder('int32', [self.batch_size, 2])
-
-
+        self.question_id = tf.placeholder(tf.string, [None])
+        self.answer_index = tf.placeholder('int32', [None, 2])
 
         # define the first layer output 分别对P, Q编码
-        self.u_P
-        self.u_Q
+        # self.u_P
+        # self.u_Q
 
         # define output
         self.pre_answer = None
@@ -76,8 +75,9 @@ class Model():
         '''
         # 设置rnn单元，默认GRU
         cell_fn = self.cell_fn
-        states = bidirectional_RNN(w, cell_fn, self.hidden_size, scope="character-level embedding", output_type=1)
-        return  states
+        states = bidirectional_RNN(w, cell_fn, self.hidden_size, self.input_keep_prob,
+                                   scope="character-level embedding", output_type=1)
+        return states
 
     def encode(self):
         '''
@@ -92,28 +92,25 @@ class Model():
         # generate word-level embedding
         e_P = self.passage_words        # [batch_size, P, D_w]
         e_Q = self.question_words
-        # generate character-level embedding
-        c_P = character_embedding(w_P)  # [batch_size, P, D_c]
-        c_Q = character_embedding(w_Q)
 
-        # # encode() input
-        # P_w_c = tf.placeholder(tf.float32, [self.batch_size, self.passage_words,
-        #                                     self.word_emb_size + self.char_emb_size], name='P_w_c')
-        # Q_w_c = tf.placeholder(tf.float32, [self.batch_size, self.question_words,
-        #                                     self.word_emb_size + self.char_emb_size], name='Q_w_c')
+        if self.config.use_char_emb:
+            # generate character-level embedding
+            c_P = character_embedding(w_P)  # [batch_size, P, D_c]
+            c_Q = character_embedding(w_Q)
 
-        P_w_c = tf.concat([e_P, c_P], 2)   # [batch_size, P, D_W+D_c]
-        Q_w_c = tf.concat([e_Q, c_Q], 2)
+            P_w_c = tf.concat([e_P, c_P], 2)   # [batch_size, P, D_W+D_c]
+            Q_w_c = tf.concat([e_Q, c_Q], 2)
+        else:
+            P_w_c = e_P
+            Q_w_c = e_Q
 
         # 设置rnn 单元, 默认 GRU
         cell_fn = self.cell_fn
-        # 计算sequence_len
-        sequence_len = []
-        for i in range(self.batch_size):
-            sequence_len.append(self.word_emb_size+self.char_emb_size)
         # 网络第一层的passage encoding
-        self.u_P = bidirectional_RNN(P_w_c, cell_fn, self.hidden_size, sequence_len, scope='passage encoding', output_type=0)
-        self.u_Q = bidirectional_RNN(Q_w_c, cell_fn, self.hidden_size, sequence_len, scope='question encoding', output_type=0)
+        self.u_P = bidirectional_RNN(P_w_c, cell_fn, self.hidden_size, self.input_keep_prob, self.passage_words_len,
+                                     scope='passage_encoding', output_type=0)
+        self.u_Q = bidirectional_RNN(Q_w_c, cell_fn, self.hidden_size, self.input_keep_prob, self.question_words_len,
+                                     scope='question_encoding', output_type=0)
 
     def gated_attention_layer(self):
         '''
@@ -127,7 +124,7 @@ class Model():
         :return:
         '''
         # define attention weights
-        with tf.variable_scope("gated attention-based recurrent networks"):
+        with tf.variable_scope("gated_attention-based_recurrent_networks"):
             memory = self.u_Q    # question encoding
             inputs = self.u_P    # passage encoding
             scopes = ["question_passage_matching", "self_matching"]
@@ -147,9 +144,9 @@ class Model():
                         "memory_len":self.question_words_len if i==0 else self.passage_words_len,
                         "is_training":self.mode=='train'
                         }
-                cell = [apply_dropout(gated_attention_Wrapper(**args), size=inputs.shape[-1],
+                cell = [apply_dropout(gated_attention_Wrapper(**args), self.config.input_keep_prob,
                                       mode=self.mode) for _ in range(2)]
-                inputs = bidirectional_RNN(inputs, cell, self.hidden_size, self.passage_words_len,
+                inputs = bidirectional_RNN(inputs, cell, self.hidden_size, self.input_keep_prob, self.passage_words_len,
                                            scope=scopes[i])
                 memory = inputs # 第三层 self_matching层，match against itsel
             self.h_t_P = inputs  # self_matching output
@@ -161,13 +158,14 @@ class Model():
         :return:  [batch_size, 2]
         '''
         # 最终输出
-        self.final_outputs = bidirectional_RNN(self.h_t_P, self.cell_fn, self.hidden_size, self.passage_words_len,
+        self.final_outputs = bidirectional_RNN(self.h_t_P, self.cell_fn, self.hidden_size, self.input_keep_prob,
+                                               self.passage_words_len,
                                                scope="bidirectional_output", mode=self.mode)
         params = (([self.params["W_u_Q"],
                     self.params["W_v_Q"]], self.params["v"]),
                   ([self.params["W_h_P"],
                     self.params["W_h_a"]], self.params["v"]))
-        cell = apply_dropout(self.cell_fn(self.hidden_size*2), size=self.final_outputs.shape[-1], mode=self.mode)
+        cell = apply_dropout(self.cell_fn(self.hidden_size*2), self.config.input_keep_prob, mode=self.mode)
         # [batch_size, 2, P] 每个word为起始位置的概率分布
         self.points_logits = pointer(self.final_outputs, self.passage_words_len,   # passage representation
                                      self.u_Q, self.question_words_len,            # question representation
@@ -178,11 +176,22 @@ class Model():
         self.output_index = tf.argmax(self.points_logits, axis=2)
         # 格式：{id:answer}  包含question_id, answer的集合
         pred_answer_text = {}
-        for i in range(self.batch_size):
-            start, end = self.output_index[i]
+        print('self.output_index:', self.output_index[0][0], self.output_index[0][1])
+
+        # for output_index, passage_word, question_id in zip(self.output_index, self.passage_words, self.question_id):
+        #     start, end = output_index[0], output_index[1]
+        #     start, end = 0, 1  #todo: what are start and end?
+        #     answer_text = passage_word[start:end]
+        #     pred_answer_text[question_id] = answer_text
+
+        for i in range(0, self.batch_size):
+            start, end = self.output_index[i][0], self.output_index[i][1]
+            # todo: what are start and end?
+            start, end = 0, 1
             answer_text = self.passage_words[i][start:end]
             question_id = self.question_id[i]
             pred_answer_text[question_id] = answer_text
+
         self.pred_answer_text =pred_answer_text
 
     def compute_loss(self):
@@ -209,3 +218,29 @@ class Model():
         tf.summary.scalar("Exact_Match", self.EM)
         tf.summary.scalar("learning_rate", self.lr)
         self.summary = tf.summary.merge_all()
+
+    def batch_to_feed_dict(self, batch, mode='train'):
+        '''
+        将batch转换为feed——dict
+            batch_data["batch_size"] = this_batch_size
+            batch_data["passage_words"] = self.passage[start:end]
+            batch_data["question_words"] = self.question[start:end]
+            batch_data["passage_words_len"] = self.passage_len[start:end]
+            batch_data["question_words_len"] = self.question_len[start:end]
+            batch_data["question_id"] = self.question_id[start:end]
+            batch_data["answer_index"] = self.answer_index[start:end]
+        :return: feed_dict
+        '''
+        feed_dict = {}
+        feed_dict[self.batch_size] = batch["batch_size"]
+        feed_dict[self.passage_words] = batch["passage_words"]
+        feed_dict[self.question_words] = batch["question_words"]
+        feed_dict[self.passage_words_len] = batch["passage_words_len"]
+        feed_dict[self.question_words_len] = batch["question_words_len"]
+        feed_dict[self.question_id] = batch["question_id"]
+        feed_dict[self.answer_index] = batch["answer_index"]
+        feed_dict[self.mode] = mode
+
+        batch_size = feed_dict[self.batch_size]
+        print('model get feed dict: batch_size: ', batch_size)
+        return feed_dict

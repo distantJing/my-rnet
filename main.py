@@ -6,17 +6,19 @@ from data_load import *
 from model import *
 from graph_handler import *
 
+
 def main(config):
     config = set_dirs(config)
     with tf.device(config.device):
         if config.mode == 'train':
             train(config)
         elif config.mode == 'test':
-            test(config)
+            test(config, 'dev')
         elif config.mode == 'debug':
             debug(config)
         else:
             raise ValueError("Invalid value for 'mode': {}".format(config.mode))
+
 
 def set_dirs(config):
     '''
@@ -44,6 +46,7 @@ def set_dirs(config):
         os.mkdir(config.answer_dir)
     return config
 
+
 def train(config):
     train_data = read_data(config, 'train')
     dev_data = read_data(config, 'dev')
@@ -62,7 +65,7 @@ def train(config):
     # begin training
     # 每次训练一个batch, num_step * batch_size = num_examples * epoch
     # todo: 注意此处参数的计算
-    num_step = config.num_step
+    num_step = config.num_steps
     global_step = 0
     for batch in tqdm(train_batches, total=num_step):
         # 用于判断是否保存中间模型、计算结果KL
@@ -71,10 +74,11 @@ def train(config):
 
         # 训练，并在适当时刻保存summary
         if get_summary:
-            loss, summary, train_op = sess.run([model.mean_loss, model.summary, model.train_op], feed_dict=batch)
+            loss, summary, train_op = sess.run([model.mean_loss, model.summary, model.train_op], feed_dict=model.batch_to_feed_dict(batch))
             graph_handler.add_summary(summary, global_step)
         else:
-            loss, train_op = sess.run([model.mean_loss, model.train_op], feed_dict=batch)
+            # print('model batch:', model.batch_to_feed_dict(batch).get_shape().as_list())
+            loss, train_op = sess.run([model.mean_loss, model.train_op], feed_dict=model.batch_to_feed_dict(batch))
 
         # 适当时刻保存整个模型
         if global_step % config.save_peroid == 0:
@@ -89,6 +93,7 @@ def train(config):
             graph_handler.dump_answer(whole_pred_dev_answer_text, 'dev', global_step)
     if global_step % config.save_period != 0:
         graph_handler.save(sess, global_step=global_step)
+
 
 def test(config, data_type):
     data = read_data(config, data_type)
@@ -105,11 +110,10 @@ def test(config, data_type):
     global_step = sess.run(model.global_step)
     graph_handler.dump_answer(whole_pred_answer_text, data_type, global_step)
 
+
 def get_whole_pred_answer_text(model, sess, batches, num_step):
     pred_answer_text = {}
     for batch in tqdm(batches, total=num_step):
-        batch_ans = sess.run(model.pred_answer_text, feed_dict=batch)
+        batch_ans = sess.run(model.pred_answer_text, feed_dict=model.batch_to_feed_dict(batch,mode='test'))
         pred_answer_text = {**pred_answer_text, **batch_ans}
     return pred_answer_text
-
-

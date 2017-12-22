@@ -53,7 +53,7 @@ def read_data(config, data_type):
         answer_index, question_id
         #todo: 多个answer如何计算
     '''
-    data_path = os.path.join(config.data_dir, "data_{}.json".format(data_type))
+    data_path = os.path.join(config.data_dir, "data_{}d_{}.json".format(config.glove_vector_size, data_type))
     with open(data_path, 'r', encoding='utf-8') as fh:
         data = json.load(fh)
 

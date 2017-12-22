@@ -1,8 +1,9 @@
 import tensorflow as tf
 
-from config import *
+# from config import get_small_config
 
-def bidirectional_RNN(inputs, cell_fn, units, inputs_len, cell=None, output_type=0,
+
+def bidirectional_RNN(inputs, cell_fn, units, input_keep_prob, inputs_len, cell=None, output_type=0,
                       layers=1, scope="Bidirectional_RNN", mode='train'):
     '''
     bidirectional recurrent neural network with LSTM or GRU cells
@@ -18,7 +19,8 @@ def bidirectional_RNN(inputs, cell_fn, units, inputs_len, cell=None, output_type
                             [batch_size, timestep, 2*units]
         layers:      多层双向rnn，具体层数
     '''
-    cell_fn = tf.nn.rnn_cell.GRUCell()
+    # config = get_small_config()
+    cell_fn = tf.nn.rnn_cell.GRUCell
     # units = 128
     with tf.variable_scope(scope):
         inputs_shape = inputs.get_shape().as_list()
@@ -39,10 +41,11 @@ def bidirectional_RNN(inputs, cell_fn, units, inputs_len, cell=None, output_type
                 # todo: 添加多层双向网络的cell
                 pass
             else:
-                cell_fw, cell_bw = [apply_dropout(cell_fn(units), size=inputs_shape[-1], mode=mode)
+                cell_fw, cell_bw = [apply_dropout(cell_fn(units), input_keep_prob, mode=mode)
                                     for _ in range(2)]
 
         # outputs, states = tf.nn.dynamic_rnn(cell_fw, input, dtype=tf.float32)
+        print('input_len: ', inputs_len)
         outputs, states = tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=inputs_len,
                                                           dtype='float', time_major=False)
 
@@ -59,11 +62,13 @@ def bidirectional_RNN(inputs, cell_fn, units, inputs_len, cell=None, output_type
             # todo: check this
             return tf.reshape(tf.concat(states,1), (batch_size, inputs_shape[1], 2*units))
 
-
-
-def apply_dropout(inputs, mode='train', size=None):
+def apply_dropout(inputs, keep_prob, mode='train'):
     # todo: apply dropout here
-    return  inputs
+    if mode == 'train':
+        return inputs
+        return tf.nn.dropout(inputs, keep_prob=keep_prob)
+    else:
+        return inputs
 
 def character_embedding(passage_words):
     pass
@@ -118,11 +123,11 @@ def gated_attention(memory, inputs, states, units, params, self_matching=False,
     :param scope:
     :return:                 attention pooling 的最终结果，该结果传入RNN_cell中，作为新的input
     '''
-    config = get_config()
+    # config = get_small_config()
     with tf.variable_scope(scope):
         weights, W_g = params
         inputs_ = [memory,  inputs]  # layer2: question_encoding, current_passage_word
-        states = tf.reshape(states, (config.train_batch_size, config.hidden_size))
+        # states = tf.reshape(states, (config.train_batch_size, config.hidden_size))
         if not self_matching:
             inputs_.append(states)    # 与att具体公式相关
         # 计算inputs_与params中多个weights的和
@@ -148,24 +153,26 @@ def attention(inputs, units, weights, scope="attention", memory_len=None, reuse=
     :param reuse:
     :return:           [batch_size, P] or [batch_size, Q]
     '''
-    config = get_config()
+    # config = get_small_config()
     with tf.variable_scope(scope, reuse=reuse):
         outputs_ = []
         weights, v = weights
         for i, (inp, w) in enumerate(zip(inputs, weights)):
-            shapes = inp.shape.as_list()
+            shapes = inp.get_shape().as_list()
             inp = tf.reshape(inp, (-1, shapes[-1]))
             if w is None:
                 w = tf.get_variable("w_%d"%i, dtype=tf.float32, shape=[shapes[-1],units],
-                                    initializer=) #todo initializer()
+                                    initializer=tf.contrib.layers.xavier_initializer()) #todo initializer()
             outputs = tf.matmul(inp, w)
 
+            # print('attention output: ', outputs, shapes[0], shapes[-1])
             if len(shapes) > 2:
-                outputs = tf.reshape(outputs, (shapes[0], shapes[1], -1))
-            elif len(shapes) == 2 and shapes[0] is config.train_batch_size:
-                outputs = tf.reshape(outputs, (shapes[0], 1, -1))
+                outputs = tf.reshape(outputs, (-1, shapes[1], units))
+            # elif len(shapes) == 2 and shapes[0] is config.train_batch_size:
+            elif len(shapes) == 2:
+                outputs = tf.reshape(outputs, (-1, 1, units))
             else:
-                outputs = tf.reshape(outputs, (1, shapes[0], -1))
+                outputs = tf.reshape(outputs, (-1, shapes[0], units))
             outputs_.append(outputs)
         outputs = sum(outputs_)     # todo check here  [batch_size, Q, 2*hidden_size]
         # [batch_size, timestep, hidden_size]
@@ -193,7 +200,7 @@ def pointer(passage, passage_len, question, question_len, cell, params, batch_si
     passage_shape = passage.get_shape().as_list()
     # 计算 question的新表达，r_q = att(u_q, V_r_Q) V_r_Q is parameter;
     # todo: 添加更多 计算initial state的方法
-    initial_state = question
+    initial_state = question_pooling(question)
     # 计算start的概率分布 [batch_size, P]
     inputs = [passage, initial_state]
     p1_logits = attention(inputs, units, weights_p, memory_len=passage_len)  # [batch_size, P]
@@ -205,6 +212,12 @@ def pointer(passage, passage_len, question, question_len, cell, params, batch_si
     inputs = [passage, initial_state_1]
     p2_logits = attention(inputs, units, weights_p, memory_len=passage_len)
     return tf.stack((p1_logits, p2_logits), 1)
+
+def question_pooling(question):
+    # question: [batch_size, Q, 2*hidden_size]
+    # return [batch_size, 2*hidden_size]
+    return tf.reduce_sum(question, 1)
+
 
 def compute_loss_value(pred_answer_prob, ground_truth_prob):
     '''
