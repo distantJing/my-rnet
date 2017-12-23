@@ -25,13 +25,13 @@ class DataSet(object):
         self.num_examples = len(question)
 
     def get_batches(self, batch_size):
-        # 根据batch_size的值，返回多个batch的json集合，可直接作为feed_dict
+        # 根据batch_size的值，返回多个batch的json集合，不可直接作为feed_dict
         last_batch_size = 0
         batches = []
         num_batches = int(math.ceil(self.num_examples / batch_size))
         for i in range(num_batches):
             # 计算当前batch的起始范围,左闭右开区间 [0,5) batch_size = 5
-            start, end = i, min(i+num_batches, self.num_examples)
+            start, end = i*batch_size, min((i+1)*batch_size, self.num_examples)
             this_batch_size = end - start
             # 构造当前batch的具体data
             batch_data = {}

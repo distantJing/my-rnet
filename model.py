@@ -4,10 +4,11 @@ from layer import *
 from RNNCell import *
 
 class Model():
-    def __init__(self, config, mode, scope):
+    def __init__(self, config, mode, scope, is_training=True):
         self.config = config
-        self.mode = mode
+        # self.mode = mode
         self.scope = scope
+        self.is_training = is_training
         # 用于保存模型等
         self.global_step = tf.get_variable("global_step", shape=[], dtype='int32',
                                            initializer=tf.constant_initializer(0), trainable=False)
@@ -26,19 +27,21 @@ class Model():
         self.lr = config.init_lr                              # learning rate
 
         # define input
-        self.batch_size = config.train_batch_size
-        # self.batch_size = tf.placeholder('int32',1)
+        # self.batch_size = config.train_batch_size
+        self.batch_size = tf.placeholder('int32')
         # passage and question words, and its sequence len, 第一维为self.batch_size
-        self.passage_words = tf.placeholder('float',[None, self.max_passage_word, self.word_emb_size])
-        self.question_words = tf.placeholder('float', [None, self.max_question_word, self.word_emb_size])
-        self.passage_words_len = tf.placeholder('int32', [None])
-        self.question_words_len = tf.placeholder('int32', [None])
+        # self.passage_words = tf.placeholder('float',[None, self.max_passage_word, self.word_emb_size])
+        # self.question_words = tf.placeholder('float', [None, self.max_question_word, self.word_emb_size])
+        self.passage_words = tf.placeholder('float', [None, None, self.word_emb_size], name='passage_words')
+        self.question_words = tf.placeholder('float', [None, None, self.word_emb_size], name='question_words')
+        self.passage_words_len = tf.placeholder('int32', [None], name='passage_word_len')
+        self.question_words_len = tf.placeholder('int32', [None], name='question_words_len')
         # passage and question char, and its sequence len
-        self.passage_words_char = tf.placeholder('float', [None, self.max_passage_word,])
-        self.question_words_char = tf.placeholder('float', [None, self.max_question_word, ])
+        self.passage_words_char = tf.placeholder('float', [None, self.max_passage_word,], name='passage_words_char')
+        self.question_words_char = tf.placeholder('float', [None, self.max_question_word, ], name='question_words_char')
         # question id and answer label
-        self.question_id = tf.placeholder(tf.string, [None])
-        self.answer_index = tf.placeholder('int32', [None, 2])
+        self.question_id = tf.placeholder(tf.string, [None], name='question_id')
+        self.answer_index = tf.placeholder('int32', [None, 2], name='answer_index')
 
         # define the first layer output 分别对P, Q编码
         # self.u_P
@@ -59,7 +62,7 @@ class Model():
         # output layer
         self.pointer_network()
         # 计算question_id, answer 集合对
-        self.answer_select()
+        # self.answer_select()
         # 设置loss计算方式
         self.compute_loss()
         # 设置train_op
@@ -142,10 +145,10 @@ class Model():
                         "cell_fn": self.cell_fn,
                         "self_matching":False if i==0 else True,
                         "memory_len":self.question_words_len if i==0 else self.passage_words_len,
-                        "is_training":self.mode=='train'
+                        "is_training":self.is_training
                         }
                 cell = [apply_dropout(gated_attention_Wrapper(**args), self.config.input_keep_prob,
-                                      mode=self.mode) for _ in range(2)]
+                                      is_training=self.is_training) for _ in range(2)]
                 inputs = bidirectional_RNN(inputs, cell, self.hidden_size, self.input_keep_prob, self.passage_words_len,
                                            scope=scopes[i])
                 memory = inputs # 第三层 self_matching层，match against itsel
@@ -160,12 +163,12 @@ class Model():
         # 最终输出
         self.final_outputs = bidirectional_RNN(self.h_t_P, self.cell_fn, self.hidden_size, self.input_keep_prob,
                                                self.passage_words_len,
-                                               scope="bidirectional_output", mode=self.mode)
+                                               scope="bidirectional_output", is_training=self.is_training)
         params = (([self.params["W_u_Q"],
                     self.params["W_v_Q"]], self.params["v"]),
                   ([self.params["W_h_P"],
                     self.params["W_h_a"]], self.params["v"]))
-        cell = apply_dropout(self.cell_fn(self.hidden_size*2), self.config.input_keep_prob, mode=self.mode)
+        cell = apply_dropout(self.cell_fn(self.hidden_size*2), self.config.input_keep_prob, is_training=self.is_training)
         # [batch_size, 2, P] 每个word为起始位置的概率分布
         self.points_logits = pointer(self.final_outputs, self.passage_words_len,   # passage representation
                                      self.u_Q, self.question_words_len,            # question representation
@@ -179,13 +182,13 @@ class Model():
         print('self.output_index:', self.output_index[0][0], self.output_index[0][1])
 
         # for output_index, passage_word, question_id in zip(self.output_index, self.passage_words, self.question_id):
-        #     start, end = output_index[0], output_index[1]
+        #     start, end = output_index[0], output_index[1] + 1
         #     start, end = 0, 1  #todo: what are start and end?
         #     answer_text = passage_word[start:end]
         #     pred_answer_text[question_id] = answer_text
 
-        for i in range(0, self.batch_size):
-            start, end = self.output_index[i][0], self.output_index[i][1]
+        for i in range(0, self.batch_size[0]):
+            start, end = self.output_index[i][0], self.output_index[i][1] + 1
             # todo: what are start and end?
             start, end = 0, 1
             answer_text = self.passage_words[i][start:end]
@@ -193,6 +196,7 @@ class Model():
             pred_answer_text[question_id] = answer_text
 
         self.pred_answer_text =pred_answer_text
+
 
     def compute_loss(self):
         with tf.variable_scope("compute_loss"):
@@ -219,7 +223,7 @@ class Model():
         tf.summary.scalar("learning_rate", self.lr)
         self.summary = tf.summary.merge_all()
 
-    def batch_to_feed_dict(self, batch, mode='train'):
+    def batch_to_feed_dict(self, batch, is_training=True):
         '''
         将batch转换为feed——dict
             batch_data["batch_size"] = this_batch_size
@@ -239,8 +243,11 @@ class Model():
         feed_dict[self.question_words_len] = batch["question_words_len"]
         feed_dict[self.question_id] = batch["question_id"]
         feed_dict[self.answer_index] = batch["answer_index"]
-        feed_dict[self.mode] = mode
+        feed_dict[self.is_training] = is_training
 
-        batch_size = feed_dict[self.batch_size]
-        print('model get feed dict: batch_size: ', batch_size)
+        # batch_size = feed_dict[self.batch_size]
+        # print('model get feed dict: batch_size: ', batch_size)
+        # print('passage_words', )
+        print('batch_size: ', batch["batch_size"])
+        print('len of passage_words', len(batch["passage_words"]))
         return feed_dict

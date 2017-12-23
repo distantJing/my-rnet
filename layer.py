@@ -2,9 +2,12 @@ import tensorflow as tf
 
 # from config import get_small_config
 
+def get_batch_size():
+    return 5
+
 
 def bidirectional_RNN(inputs, cell_fn, units, input_keep_prob, inputs_len, cell=None, output_type=0,
-                      layers=1, scope="Bidirectional_RNN", mode='train'):
+                      layers=1, scope="Bidirectional_RNN", is_training=True):
     '''
     bidirectional recurrent neural network with LSTM or GRU cells
     Args:
@@ -41,15 +44,15 @@ def bidirectional_RNN(inputs, cell_fn, units, input_keep_prob, inputs_len, cell=
                 # todo: 添加多层双向网络的cell
                 pass
             else:
-                cell_fw, cell_bw = [apply_dropout(cell_fn(units), input_keep_prob, mode=mode)
+                cell_fw, cell_bw = [apply_dropout(cell_fn(units), input_keep_prob, is_training=is_training)
                                     for _ in range(2)]
 
         # outputs, states = tf.nn.dynamic_rnn(cell_fw, input, dtype=tf.float32)
-        print('input_len: ', inputs_len)
+        # print('input_len: ', inputs_len)
         outputs, states = tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=inputs_len,
                                                           dtype='float', time_major=False)
 
-        print('output: ', outputs)
+        # print('output: ', outputs)
         # print('states: ', states[0][1])
         # results = tf.matmul(states[1][0], weights['out']) + biases['out']
         # return results
@@ -62,9 +65,9 @@ def bidirectional_RNN(inputs, cell_fn, units, input_keep_prob, inputs_len, cell=
             # todo: check this
             return tf.reshape(tf.concat(states,1), (batch_size, inputs_shape[1], 2*units))
 
-def apply_dropout(inputs, keep_prob, mode='train'):
+def apply_dropout(inputs, keep_prob, is_training=True):
     # todo: apply dropout here
-    if mode == 'train':
+    if is_training:
         return inputs
         return tf.nn.dropout(inputs, keep_prob=keep_prob)
     else:
@@ -165,14 +168,16 @@ def attention(inputs, units, weights, scope="attention", memory_len=None, reuse=
                                     initializer=tf.contrib.layers.xavier_initializer()) #todo initializer()
             outputs = tf.matmul(inp, w)
 
+            batch_size = get_batch_size() if shapes[0]==None else shapes[0]
+
             # print('attention output: ', outputs, shapes[0], shapes[-1])
             if len(shapes) > 2:
-                outputs = tf.reshape(outputs, (-1, shapes[1], units))
+                outputs = tf.reshape(outputs, (batch_size, -1, units))
             # elif len(shapes) == 2 and shapes[0] is config.train_batch_size:
             elif len(shapes) == 2:
-                outputs = tf.reshape(outputs, (-1, 1, units))
+                outputs = tf.reshape(outputs, (batch_size, 1, units))
             else:
-                outputs = tf.reshape(outputs, (-1, shapes[0], units))
+                outputs = tf.reshape(outputs, (1, batch_size, units))
             outputs_.append(outputs)
         outputs = sum(outputs_)     # todo check here  [batch_size, Q, 2*hidden_size]
         # [batch_size, timestep, hidden_size]

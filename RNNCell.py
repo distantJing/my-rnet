@@ -18,7 +18,7 @@ class gated_attention_Wrapper(RNNCell):
         '''
         super(gated_attention_Wrapper, self).__init__()    #todo what's this mean？？？
         cell = cell_fn
-        print(cell)
+        # print(cell)
         self._cell = cell(num_units)     #cell为新定义的或默认的# todo
         self._num_units = num_units
         self._activation = math_ops.tanh

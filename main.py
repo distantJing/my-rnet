@@ -11,8 +11,10 @@ def main(config):
     config = set_dirs(config)
     with tf.device(config.device):
         if config.mode == 'train':
+            print('train model ing....')
             train(config)
         elif config.mode == 'test':
+            print('test model ing ...')
             test(config, 'dev')
         elif config.mode == 'debug':
             debug(config)
@@ -48,12 +50,15 @@ def set_dirs(config):
 
 
 def train(config):
+    print("load train_data and dev_data ing...")
     train_data = read_data(config, 'train')
     dev_data = read_data(config, 'dev')
     # 得到多个batch的集合
+    print("generate train_batches and dev_batches ing ...")
     train_batches = train_data.get_batches(config.train_batch_size)
     dev_batches = dev_data.get_batches(config.train_batch_size)
 
+    print('build the model ing ...')
     model = Model(config, 'train', scope="model")
     graph_handler = GraphHandler(config, model)
 
@@ -65,6 +70,7 @@ def train(config):
     # begin training
     # 每次训练一个batch, num_step * batch_size = num_examples * epoch
     # todo: 注意此处参数的计算
+    print("start train ing ...")
     num_step = config.num_steps
     global_step = 0
     for batch in tqdm(train_batches, total=num_step):
