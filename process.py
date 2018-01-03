@@ -65,7 +65,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     home = os.getcwd()
     source_dir = os.path.join(home, "data", "squad")
-    target_dir = os.path.join(home, "data", "squad")
+    target_dir = os.path.join(home, "data", "squad", "small_data")
     glove_dir = os.path.join(home, "data", "glove")
     parser.add_argument('-s', "--source_dir", default=source_dir)
     parser.add_argument('-t', "--target_dir", default=target_dir)
@@ -89,7 +89,7 @@ def process(args):
 # 对当前json文件进行处理
 def process_each(args, data_type, out_name, start_ratio=0.0, stop_ratio=1.0):
     source_path = os.path.join(args.source_dir, "{}-{}.json".format(data_type, args.data_version))
-    print('source_path: ', source_path)
+    print("process {}-{}.json, splitting words, generating answer index ...".format(data_type, args.data_version))
     source_data = json.load(open(source_path, 'r', encoding=args.encoding))
 
     passage_word = []
@@ -102,7 +102,7 @@ def process_each(args, data_type, out_name, start_ratio=0.0, stop_ratio=1.0):
 
     start_ai = int(len(source_data['data']) * start_ratio)
     stop_ai = int(len(source_data['data']) * stop_ratio)
-    stop_ai = 1
+    stop_ai = 1         # 调整stop_ai的大小，使用小数据进行测试
     invalid_answer = 0  # 统计非法答案，情况包括但不局限于：答案是文中某个单词的前缀
 
     for ai, article in enumerate(tqdm(source_data['data'][start_ai:stop_ai])):
@@ -154,6 +154,7 @@ def process_each(args, data_type, out_name, start_ratio=0.0, stop_ratio=1.0):
 
 
 def save(args, data, data_type, save_type):
+    print("saving {} {} data".format(save_type, data_type))
     if save_type == 'generate':
         data_path = os.path.join(args.target_dir, "data_{}.json".format(data_type))
     elif save_type == 'encode':
@@ -228,19 +229,18 @@ def encode():
 
 
 def encode_each(args, data_type, out_name, start_ratio=0.0, stop_ratio=1.0):
+    print("encode data_{}.json".format(data_type))
     source_path = os.path.join(args.target_dir, "data_{}.json".format(data_type))
     source_data = json.load(open(source_path, 'r', encoding=args.encoding))
     target_data = source_data
     passage_word = source_data["passage_word"]
     question_word = source_data["question_word"]
 
+    # 加载glove字典文件
     word2vec_dict = get_word2vec_dict(args)
 
     target_data["passage_word_vec"] = get_word2vec_passage(args, word2vec_dict, passage_word)
     target_data["question_word_vec"] = get_word2vec_question(args, word2vec_dict, question_word)
-    # print(target_data)
-    # with open('test.txt','w') as f:
-    #     f.write(target_data)
     save(args, target_data, data_type, 'encode')
 
 

@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import numpy as np
 
 from tqdm import tqdm
 
@@ -26,8 +27,8 @@ class DataSet(object):
 
     def get_batches(self, batch_size):
         # 根据batch_size的值，返回多个batch的json集合，不可直接作为feed_dict
-        last_batch_size = 0
         batches = []
+        # num_batches * batch_size = num_examples
         num_batches = int(math.ceil(self.num_examples / batch_size))
         for i in range(num_batches):
             # 计算当前batch的起始范围,左闭右开区间 [0,5) batch_size = 5
@@ -74,16 +75,16 @@ def read_data(config, data_type):
     para_num = len(question_word)
     for pi, qu_to_para in enumerate(tqdm(question_word[0:para_num])):
         passage = passage_word[pi]
-        passage_len = len(passage)
+        passage_len = min(len(passage),config.max_passage_word)
         for qi, question in enumerate(qu_to_para):
-            question_len = len(question)
+            question_len = min(len(question),config.max_question_word)
             id = question_id[pi][qi]
             # todo: 添加多个答案
             index = answer_index[pi][qi][0]
             # 将处理好的数据对添加到目标矩阵中
-            new_passage_word.append(passage)
+            new_passage_word.append(pad(passage, config.max_passage_word))
             new_passage_len.append(passage_len)
-            new_question_word.append(question)
+            new_question_word.append(pad(question, config.max_question_word))
             new_question_len.append(question_len)
             new_answer_index.append(index)
             new_question_id.append(id)
@@ -93,3 +94,15 @@ def read_data(config, data_type):
     return data_set
 
 
+def pad(array, max_len):
+    n_pad = max_len - len(array)
+    # 需要填充，用0填充
+    if n_pad > 0:
+        # (0, n_pad) 第一维在前面填充0个元素， 后面填充n_pad
+        # (0,0) 第二维保持不变
+        n_pad = ((0, n_pad), (0,0))
+        array = np.pad(array, pad_width=n_pad, mode='constant', constant_values=0)
+    # 需要舍弃超出最大范围的数据
+    else:
+        array = array[0:max_len]
+    return array

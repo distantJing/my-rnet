@@ -3,7 +3,7 @@ import tensorflow as tf
 # from config import get_small_config
 
 def get_batch_size():
-    return 5
+    return 7
 
 
 def bidirectional_RNN(inputs, cell_fn, units, input_keep_prob, inputs_len, cell=None, output_type=0,
@@ -162,13 +162,18 @@ def attention(inputs, units, weights, scope="attention", memory_len=None, reuse=
         weights, v = weights
         for i, (inp, w) in enumerate(zip(inputs, weights)):
             shapes = inp.get_shape().as_list()
+            print('attention shape: ', shapes)
             inp = tf.reshape(inp, (-1, shapes[-1]))
             if w is None:
                 w = tf.get_variable("w_%d"%i, dtype=tf.float32, shape=[shapes[-1],units],
                                     initializer=tf.contrib.layers.xavier_initializer()) #todo initializer()
             outputs = tf.matmul(inp, w)
 
-            batch_size = get_batch_size() if shapes[0]==None else shapes[0]
+            # batch_size = get_batch_size() if shapes[0] is None else shapes[0]
+            if shapes[0] is None:
+                batch_size = get_batch_size()
+            else:
+                batch_size = shapes[0]
 
             # print('attention output: ', outputs, shapes[0], shapes[-1])
             if len(shapes) > 2:
@@ -231,6 +236,8 @@ def compute_loss_value(pred_answer_prob, ground_truth_prob):
     :param ground_truth_prob:  [batch_size, 2, P]
     :return:
     '''
+    print('1: ', tf.shape(ground_truth_prob))
+    print('2: ', tf.shape(pred_answer_prob))
     ans = ground_truth_prob * tf.log(pred_answer_prob + 1e-8)
     ans = -tf.reduce_sum(ans, 2)  # [batch_size, 2] 每一个question的start end的loss
     ans = tf.reduce_mean(ans, 1)  # [batch_size] average loss for start and end

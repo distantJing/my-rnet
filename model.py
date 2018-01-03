@@ -48,10 +48,10 @@ class Model():
         # self.u_Q
 
         # define output
-        self.pre_answer = None
+        # self.pre_answer = None
 
         # define loss output
-        self.loss = None
+        # self.loss = None
 
         # define network structure
         # 第一层，encoding 层
@@ -100,7 +100,6 @@ class Model():
             # generate character-level embedding
             c_P = character_embedding(w_P)  # [batch_size, P, D_c]
             c_Q = character_embedding(w_Q)
-
             P_w_c = tf.concat([e_P, c_P], 2)   # [batch_size, P, D_W+D_c]
             Q_w_c = tf.concat([e_Q, c_Q], 2)
         else:
@@ -194,9 +193,7 @@ class Model():
             answer_text = self.passage_words[i][start:end]
             question_id = self.question_id[i]
             pred_answer_text[question_id] = answer_text
-
         self.pred_answer_text =pred_answer_text
-
 
     def compute_loss(self):
         with tf.variable_scope("compute_loss"):
@@ -243,11 +240,8 @@ class Model():
         feed_dict[self.question_words_len] = batch["question_words_len"]
         feed_dict[self.question_id] = batch["question_id"]
         feed_dict[self.answer_index] = batch["answer_index"]
-        feed_dict[self.is_training] = is_training
+        # feed_dict[self.is_training] = is_training
 
-        # batch_size = feed_dict[self.batch_size]
-        # print('model get feed dict: batch_size: ', batch_size)
-        # print('passage_words', )
-        print('batch_size: ', batch["batch_size"])
-        print('len of passage_words', len(batch["passage_words"]))
+        # print('batch_size: ', batch["batch_size"])
+        # print('len of passage_words', len(batch["passage_words"]))
         return feed_dict

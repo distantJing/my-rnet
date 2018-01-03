@@ -57,6 +57,7 @@ def train(config):
     print("generate train_batches and dev_batches ing ...")
     train_batches = train_data.get_batches(config.train_batch_size)
     dev_batches = dev_data.get_batches(config.train_batch_size)
+    print('train_batches: ', len(train_batches))
 
     print('build the model ing ...')
     model = Model(config, 'train', scope="model")
@@ -73,21 +74,36 @@ def train(config):
     print("start train ing ...")
     num_step = config.num_steps
     global_step = 0
+
     for batch in tqdm(train_batches, total=num_step):
+    # print('len_batches: ', len(train_batches))
+    # for i in tqdm(range(num_step)):
+    #     batch = train_batches[i%len(train_batches)]
         # 用于判断是否保存中间模型、计算结果KL
         global_step = sess.run(model.global_step) + 1
         get_summary = global_step % config.log_period == 0
 
+        # test ***********************
+        points_logits, answer_index_prob = sess.run([model.points_logits, model.answer_index_prob],
+                                                    feed_dict=model.batch_to_feed_dict(batch))
+        print('len logits: ', len(points_logits), ' ', len(answer_index_prob))
+        # test ***********************
+
         # 训练，并在适当时刻保存summary
         if get_summary:
-            loss, summary, train_op = sess.run([model.mean_loss, model.summary, model.train_op], feed_dict=model.batch_to_feed_dict(batch))
+            loss, summary, train_op = sess.run([model.mean_loss, model.summary, model.train_op],
+                                               feed_dict=model.batch_to_feed_dict(batch))
             graph_handler.add_summary(summary, global_step)
         else:
             # print('model batch:', model.batch_to_feed_dict(batch).get_shape().as_list())
             loss, train_op = sess.run([model.mean_loss, model.train_op], feed_dict=model.batch_to_feed_dict(batch))
+            # loss, train_op = sess.run([model.mean_loss, model.train_op], feed_dict=feed_dict)
+
+        print('loss: ', loss)
+
 
         # 适当时刻保存整个模型
-        if global_step % config.save_peroid == 0:
+        if global_step % config.save_period == 0:
             graph_handler.save(sess, global_step=global_step)
 
         # 进行模型评价
